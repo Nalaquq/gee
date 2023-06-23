@@ -1,0 +1,6 @@
+// M2: Pattern recognition for arid regions
+
+// This tool carries out automatic landcover classification through the use of supervised classification. In arid regions,
+// it is may be used for showing urbanisation or sand dunes shifts. The type of supervised classification algorithm can be changed in 
+// line 55.
+// Original script by Jonathan S. Lim, University of Oxford/Nalaquq LLC., jlim@nalaquq.com 14/2/2023

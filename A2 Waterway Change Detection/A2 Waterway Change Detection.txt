@@ -1,0 +1,89 @@
+// A2: Waterway automatic change detection 14/2/2023
+// Original script by Jonathan S. Lim, University of Oxford/Nalaquq LLC., jlim@nalaquq.com 14/2/2023
+
+// This is a script for carrying out relative pixel-based change detection on Planetscope imagery within Google Earth Engine. 
+// It is optimised for highlighting erosion between two uploaded images from different dates, where vegetation is present.
+// It has been tested on imagery from Southwest Alaska during the summer months. It outputs a change detection raster,
+// and offers two ways to isolate values between a certain range on the change raster, either by sampling an area
+// with a polygon drawn in the map window, or by inputting a fixed range of values in line 23-24. There are four steps to be followed below. (Lines 10,15,18,22)
+
+//STEP 1: Type a description for the older and more recent images (Recommended)
+var recentname= "Napakiak August 2022"
+var oldername= 'Napakiak July 2017'
+
+// Imports the images and renames the bands for ease of use
+var recent = ee.Image('users/nalaquq/Alaskarecent') //STEP 2: Specify Google Earth directory of more recent planet imagery here in parentheses
+  .select(['b3', 'b2', 'b1', 'b4'])
+  .rename(['red','green','blue','nir']);
+var older = ee.Image('users/nalaquq/Alaskaolder') //STEP 3: Specify Google Earth directory of older planet imagery here in parentheses. Click Run when ready.
+  .select(['b3', 'b2', 'b1', 'b4'])
+  .rename(['red','green','blue','nir']);
+  
+// Fixed value ranges. STEP 4: (Optional) Change the fixed value ranges
+var button2min= -3.456;
+var button2max= -1.231;
+
+//Imports custom colour palettes from
+//https://github.com/gee-community/ee-palettes
+var palettes = require('users/gena/packages:palettes');
+var changeD_Colour = palettes.colorbrewer.Paired[7].reverse();
+
+// Calculates NDVI, a vegetation index for both rasters. This is a good proxy for highlighting terrain.
+var Imagerecent= recent.normalizedDifference(['nir','red']);
+var Imageolder= older.normalizedDifference(['nir','red']);
+
+//Calculates and displays a relative pixel change raster, along with the original imagery
+var change= Imagerecent.subtract(Imageolder).divide(Imagerecent.max(Imageolder));
+
+Map.centerObject(change, 13);
+Map.addLayer(older, {min: -1000, max: 1000, gamma: 1}, oldername);
+Map.addLayer(recent, {min: -1000, max: 1000, gamma: 1}, recentname);
+Map.addLayer(change, {min: -1, max: 1, palette: changeD_Colour}, 'Change Detection Raster');
+
+print ("A change detection raster is now available for download. If you would like to isolate a range of values for export, press the appropriate button in the user interface.");
+
+Export.image.toDrive({image: change, description: 'Full change raster', scale: 10,});
+
+// Defines the function of button 1
+function getRasterMinMax() {
+  var minValue = ee.Number(change.reduceRegion({
+    reducer: ee.Reducer.min(),
+    geometry: geometry,
+    scale: 3
+  }).get('nd'));
+  var maxValue = ee.Number(change.reduceRegion({
+    reducer: ee.Reducer.max(),
+    geometry: geometry,
+    scale: 3
+  }).get('nd'));
+  print('The minimum change raster value of the sample area is:', minValue);
+  print('The maximum change raster value of the sample area is:', maxValue);
+  var maskedRaster = change.updateMask(change.gte(minValue).and(change.lte(maxValue)));
+  Map.addLayer(maskedRaster, {min: -10, max: 10, palette: 'Orange'}, 'Relative Pixel Change');
+  print ("Areas of landscape change have been isolated and are ready for export.");
+  Export.image.toDrive({image: maskedRaster, description: 'Changed area only', scale: 3,});
+}
+
+// Defines the function of button 2
+function getRasterMinMax2() {
+  var maskedRaster = change.updateMask(change.gte(button2min).and(change.lte(button2max)));
+  Map.addLayer(maskedRaster, {min: -10, max: 10, palette: 'Orange'}, 'Relative Pixel Change');
+  print ("Areas of landscape change have been isolated and are ready for export.");
+  Export.image.toDrive({image: maskedRaster, description: 'Changed area only', scale: 3,});
+}
+
+  // Create a title label and description for the UI
+var titleLabel = ui.Label('Isolate areas of change', {fontWeight: 'bold', fontSize: '20px'});
+var desc = ui.Label('You may now choose to prepare a raster for export showing only areas of change between a certain range of values, using one of the options below:', {fontSize: '14px'});
+var Option1 = ui.Label('Option A: Calibrate with geometry (a single polygon drawn in the map window). After drawing polygon, press reset and press run. Step 1: Draw a sample area polygon, Step 2: Press button (A) ', {fontSize: '12px'});
+var Option2 = ui.Label('Option B: Press (B) to use a fixed value range defined in Lines 21-22', {fontSize: '12px'});
+
+// Calibrate using a geometry and isolate
+var button1 = ui.Button('(A)', getRasterMinMax);
+
+// Isolate using fixed values
+var button2 = ui.Button('(B)', getRasterMinMax2);
+
+// Create and add a vertical panel to hold the title, description, and buttons
+var panel = ui.Panel([  titleLabel, desc, Option1,  button1, Option2,  button2], ui.Panel.Layout.flow('vertical'), {width: '250px'});
+ui.root.insert(0, panel);

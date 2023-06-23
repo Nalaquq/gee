@@ -1,0 +1,104 @@
+// M1: Flood extent visualizer v1.0 (12/04/2023)
+// Original script by Jonathan S. Lim (University of Oxford), jlim@nalaquq.com, modified from Split Panel example code.
+
+// This script generates a split screen to compare flooding between two areas using Sentinel 2 archival imagery.
+// Images can be displayed as an RGB Raster or as a normalized difference water index (NDWI) raster to highlight water.
+// Follow steps below to run script and convert it into a Google Earth Engine App.
+
+
+// STEP 1: Modify dates or duplicate lines to add more options into the drop down pane.
+// Creates composite images based on seven days on the dates stipulated below:
+
+var images = {
+  '2020-08-7': getWeeklySentinelComposite('2020-08-7'),
+  '2020-09-14': getWeeklySentinelComposite('2020-09-14'),
+};
+
+//STEP 2: Specify geographical region, see lines 97-104.
+
+//STEP 3: Press run to activate script, verify it works as intended. If no image is loading, adjust dates in Lines 13-14.
+
+// STEP 4: Convert to App by pressing the 'Apps' button in the top right of screen, and follow all prompts.
+
+function getWeeklySentinelComposite(date, visualizationMode) {
+  var date = ee.Date(date);
+  var sentinel2 = ee.ImageCollection('COPERNICUS/S2_HARMONIZED')
+                      .filterDate(date, date.advance(1, 'week'))
+                      .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+                      .mean();
+
+  if (visualizationMode === 'NDWI') {
+    var NDWI = sentinel2.normalizedDifference(['B8', 'B11']);
+    return NDWI.visualize({
+      min: -0.3,
+      max: 0.2,
+      palette: ["white", "blue"]
+    });
+  } else { // RGB
+    return sentinel2.visualize({
+      bands: ['B4', 'B3', 'B2'],
+      min: 0,
+      max: 3000,
+      gamma: 1.4
+    });
+  }
+}
+
+var leftMap = ui.Map();
+leftMap.setControlVisibility(false);
+var leftSelector = addLayerSelector(leftMap, 0, 'top-left', 'RGB');
+
+var rightMap = ui.Map();
+rightMap.setControlVisibility(false);
+var rightSelector = addLayerSelector(rightMap, 1, 'top-right', 'RGB');
+
+function addLayerSelector(mapToChange, defaultValue, position, defaultMode) {
+  var label = ui.Label('Choose an image to visualize');
+
+  function updateMap(selection) {
+    mapToChange.layers().set(0, ui.Map.Layer(images[selection]));
+  }
+
+  function updateMode(mode) {
+    Object.keys(images).forEach(function(key) {
+      images[key] = getWeeklySentinelComposite(key, mode);
+    });
+    updateMap(select.getValue());
+  }
+
+  var select = ui.Select({items: Object.keys(images), onChange: updateMap});
+  select.setValue(Object.keys(images)[defaultValue], true);
+
+  var modeLabel = ui.Label('Choose visualization mode');
+  var modeSelect = ui.Select({
+    items: ['NDWI', 'RGB'],
+    onChange: updateMode,
+    value: defaultMode
+  });
+
+  var controlPanel = ui.Panel({
+    widgets: [label, select, modeLabel, modeSelect],
+    style: {position: position}
+  });
+
+  mapToChange.add(controlPanel);
+}
+
+var splitPanel = ui.SplitPanel({
+  firstPanel: leftMap,
+  secondPanel: rightMap,
+  wipe: true,
+  style: {stretch: 'both'}
+});
+
+ui.root.widgets().reset([splitPanel]);
+var linker = ui.Map.Linker([leftMap, rightMap]);
+
+//This will always center the map at the example area of Kaedi
+leftMap.setCenter(-13.49931679654223, 16.15372311298712, 12);
+
+// Uncomment lines below (and comment out line 98) to center map on a geometry that you specify
+// Press reset and use drawing tools to draw a polygon on area of interest, then press Run
+
+//leftMap.centerObject(geometry, 11);
+//rightMap.centerObject(geometry, 11);

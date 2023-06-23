@@ -1,0 +1,231 @@
+// M2: Pattern recognition for arid regions
+
+// This tool carries out automatic landcover classification through the use of supervised classification. In arid regions,
+// it is may be used for showing urbanisation or sand dunes shifts. The type of supervised classification algorithm can be changed in 
+// line 55.
+// Original script by Jonathan S. Lim, University of Oxford/Nalaquq LLC., jlim@nalaquq.com 14/2/2023
+
+//STEP 1: Type a description for the older and more recent images (Recommended)
+var recentname= "Chinguetti Feb 2023"
+var oldername= 'Chinguetti Feb 2017'
+var changename= 'Change Raster Chinguetti'
+
+// Imports the images and renames the bands for ease of use
+var recent = ee.Image('users/nalaquq/chinguettiNew') //STEP 2: Specify Google Earth directory of more recent planet imagery here in parentheses
+  .select(['b3', 'b2', 'b1', 'b4'])
+  .rename(['red','green','blue','nir']);
+var older = ee.Image('users/nalaquq/chinguettiOld') //STEP 3: Specify Google Earth directory of older planet imagery here in parentheses and press run to upload both images.
+  .select(['b3', 'b2', 'b1', 'b4'])
+  .rename(['red','green','blue','nir']);
+  
+// Survey areas
+var buildings = /* color: #0b4a8b */ee.Geometry.MultiPolygon(
+        [[[[-12.361159963738798, 20.453215126839492],
+           [-12.3606020642637, 20.4534010973673],
+           [-12.360897107255338, 20.454547072949115],
+           [-12.361503286492704, 20.45442644434309]]],
+         [[[-12.360889852222664, 20.461857906355647],
+           [-12.361045420345528, 20.46229013750746],
+           [-12.361533582386238, 20.46209915179971],
+           [-12.361372649845345, 20.461671946067177]]],
+         [[[-12.361848161100717, 20.46348568985529],
+           [-12.361622855543466, 20.463596259558702],
+           [-12.36201445805964, 20.464938167339206],
+           [-12.362234399198861, 20.46487283127695]]],
+         [[[-12.362840179149343, 20.45479248325112],
+           [-12.362239364330007, 20.454893006856537],
+           [-12.362432483379079, 20.45542578086699],
+           [-12.3629045521657, 20.455375519246815]]],
+         [[[-12.360013787717904, 20.455986248094643],
+           [-12.35959536311158, 20.456096823197633],
+           [-12.359809939832772, 20.456669802001898],
+           [-12.360239093275155, 20.45656927955926]]],
+         [[[-12.36361867663392, 20.461514905727515],
+           [-12.362878386945809, 20.46167573642491],
+           [-12.362921302290047, 20.461916982155174],
+           [-12.363720600576485, 20.461725995983308]]],
+         [[[-12.362299213324148, 20.46056034387651],
+           [-12.361703762922842, 20.46077143544447],
+           [-12.361821780119497, 20.46119864368225],
+           [-12.362406501684744, 20.461093098228154]]]]),
+    duneshadow = /* color: #ffc82d */ee.Geometry.MultiPolygon(
+        [[[[-12.348445541204509, 20.450427856371647],
+           [-12.348375803770121, 20.45017151359764],
+           [-12.348440176786479, 20.450040828881587],
+           [-12.348526007474955, 20.449658826766626],
+           [-12.348880059064921, 20.449296929150083],
+           [-12.34914827996641, 20.449020479007675],
+           [-12.349298483671244, 20.448824450423494],
+           [-12.34943259412199, 20.448623395205587],
+           [-12.349293119253215, 20.448658579887727],
+           [-12.349121457876262, 20.44889984606239],
+           [-12.348880059064921, 20.449110953654483],
+           [-12.34863164199137, 20.449435740096963],
+           [-12.348427794106238, 20.44970716314407],
+           [-12.348411700852148, 20.449868006204998],
+           [-12.34836342108988, 20.450030701474432],
+           [-12.348299048073523, 20.450161386199095],
+           [-12.348315141327612, 20.450377518384414],
+           [-12.348422429688208, 20.45047804487865]]],
+         [[[-12.350606283247878, 20.44593055016393],
+           [-12.350520452559401, 20.445850126593868],
+           [-12.350520452559401, 20.445518378922504],
+           [-12.350445350706984, 20.445136365565393],
+           [-12.350338062346388, 20.445417849183748],
+           [-12.35021258019168, 20.445813851217572],
+           [-12.350309139716217, 20.446065174793592],
+           [-12.350598818289825, 20.446095333595103]]],
+         [[[-12.353461568925432, 20.444148338199096],
+           [-12.353568857286028, 20.44353510030351],
+           [-12.353676145646624, 20.443394356834737],
+           [-12.353879993531756, 20.4429218599613],
+           [-12.353729789826922, 20.442962072517723],
+           [-12.353719060990862, 20.443173188266286],
+           [-12.353450840089373, 20.44338430372489],
+           [-12.353429382417254, 20.443484834793736],
+           [-12.353407924745134, 20.44380653377221],
+           [-12.353354280564837, 20.444037754497106],
+           [-12.353343551728777, 20.444268974874152],
+           [-12.353472297761492, 20.444289080977455]]],
+         [[[-12.355265206202244, 20.443677215084055],
+           [-12.355157917841648, 20.443214772201717],
+           [-12.355179375513767, 20.442581424257472],
+           [-12.355029171808933, 20.44276238107926],
+           [-12.355029171808933, 20.443074028439625],
+           [-12.355072087153172, 20.44341583449542],
+           [-12.35509354482529, 20.443697321264764],
+           [-12.355308121546482, 20.443858170615805]]]]),
+    trees = /* color: #00ffff */ee.Geometry.Polygon(
+        [[[-12.35812098060108, 20.459907215769075],
+          [-12.357984187941321, 20.45980669544531],
+          [-12.357823255400428, 20.459859468623492],
+          [-12.357579174380072, 20.459917267797834],
+          [-12.357624771933326, 20.459992657992533],
+          [-12.35791176829792, 20.4600378920916],
+          [-12.358094158510932, 20.460025327065416]]]),
+    sand = /* color: #bf04c2 */ee.Geometry.MultiPolygon(
+        [[[[-12.355452182631263, 20.459477490924396],
+           [-12.354400756697425, 20.459075408109495],
+           [-12.35251248155094, 20.46036206941163],
+           [-12.3530274656818, 20.461045603843736]]],
+         [[[-12.345882060866126, 20.45645179189915],
+           [-12.344948652128943, 20.45680362042969],
+           [-12.345399263243445, 20.45694435161625],
+           [-12.345989349226722, 20.456863933811146]]],
+         [[[-12.372513833645888, 20.451164991369886],
+           [-12.37221342623622, 20.45245171893409],
+           [-12.37369400561244, 20.452793504131886]]]]);
+
+//Imports custom colour palettes from
+//https://github.com/gee-community/ee-palettes
+var palettes = require('users/gena/packages:palettes');
+var changeD_Colour = palettes.misc.jet[7].reverse();
+
+// Use these bands for prediction.
+var bands = ['red', 'green', 'blue', 'nir'];
+
+var drawingTools = Map.drawingTools();
+// Only allow drawing polygons and rectangles.
+drawingTools.setDrawModes(['polygon', 'rectangle']);
+
+Map.centerObject(older, 13);
+Map.addLayer(older, {min: -10000, max: 10000, gamma: 1}, oldername); 
+Map.addLayer(recent, {min: -10000, max: 10000, gamma: 1}, recentname, false); //hidden,('false') as the other image is used to train the sample. Change accordingly
+
+
+//STEP 4: Using the displayed generate polygons using the drawing tools. In lines 41-46 below, ensure that the list of geometry names match 
+// the training classes being digitised
+function train() {
+// Make a FeatureCollection from the hand-made geometries.
+  var polygons = ee.FeatureCollection([
+    ee.Feature(buildings, {'class': 0}),
+    ee.Feature(duneshadow, {'class': 1}),
+    ee.Feature(trees, {'class': 2}),
+    ee.Feature(sand, {'class': 3}),
+  ]);
+
+  // Get the values for all pixels in each polygon in the training.
+  var training = older.sampleRegions({
+  // Get the sample from the polygons FeatureCollection.
+    collection: polygons,
+  // Keep this list of properties from the polygons.
+    properties: ['class'],
+  });
+
+  // Create a classifier with custom parameters. Other types of classifiers can be found here: https://developers.google.com/earth-engine/guides/classification
+  var classifier = ee.Classifier.smileRandomForest(10);
+
+  // Train the classifier.
+  var trained = classifier.train(training, 'class', bands);
+
+  // Classify the image.
+  var classified = recent.classify(trained);
+  var classified2 = older.classify(trained);
+
+  // Display the classification result and the input image.
+  Map.centerObject(older, 13);
+  Map.addLayer(classified,
+              {min: 0, max: 5, palette: ['orange', 'white', 'green', 'yellow']},
+              'Newer Classified');
+  Map.addLayer(classified2,
+              {min: 0, max: 5, palette: ['orange', 'white', 'green', 'yellow']},
+              'Older Classified');
+             
+  var change = classified.subtract(classified2).toInt();
+
+  Map.addLayer(change, {min: -5, max: 5, palette: changeD_Colour}, 'Change Raster');
+  // Export Layer
+  Export.image.toDrive({
+    image: change, 
+    description: changename, 
+    //region:image.geometry(),
+    scale: 3, })
+    //maxPixels:1e10,
+  Export.image.toDrive({
+    image: classified2, 
+    description: "Older raster", 
+    //region:image.geometry(),
+    scale: 3, })
+    //maxPixels:1e10,
+  Export.image.toDrive({
+    image: classified, 
+    description: "Newer raster", 
+    //region:image.geometry(),
+    scale: 3, 
+  //maxPixels:1e10,
+});
+  
+
+// Get the band names
+  var bandNames = change.bandNames();
+
+  //Clicker
+  var getValue = function(coords) {
+  var point = ee.Geometry.Point(coords.lon, coords.lat);
+  // Sample pixel value at clicked point
+  var pixelValue = change.sample(point, 30).first().get('classification');
+  print('Pixel value:', pixelValue);
+  
+  // Create a binary mask for pixels with the same value as the clicked pixel
+  var mask = change.select('classification').eq(ee.Image.constant(pixelValue));
+    Map.addLayer(mask, {palette: ['white', 'red']}, "Masked Image");
+
+  };
+
+  // Add the click event to the map
+  Map.onClick(getValue);
+  }
+
+
+  // Create a title label and description for the UI
+var titleLabel = ui.Label('Rapid Supervised Classifier', {fontWeight: 'bold', fontSize: '20px'});
+var desc = ui.Label('Create a set of feature classes to classify the image:', {fontSize: '14px'});
+var Option1 = ui.Label('1) Create classes and name them accordingly, press run to re-load tool, then press Classify button: ', {fontSize: '12px'});
+var Option2 = ui.Label('2) Click on the change raster to isolate class', {fontSize: '12px'});
+
+// Calibrate using a geometry and isolate
+var button1 = ui.Button('Classify', train);
+
+// Create and add a vertical panel to hold the title, description, and buttons
+var panel = ui.Panel([  titleLabel, desc, Option1,  button1, Option2], ui.Panel.Layout.flow('vertical'), {width: '250px'});
+ui.root.insert(0, panel);

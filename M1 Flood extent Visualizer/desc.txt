@@ -1,0 +1,6 @@
+// M1: Flood extent visualizer v1.0 (12/04/2023)
+// Original script by Jonathan S. Lim (University of Oxford), jlim@nalaquq.com, modified from Split Panel example code.
+
+// This script generates a split screen to compare flooding between two areas using Sentinel 2 archival imagery.
+// Images can be displayed as an RGB Raster or as a normalized difference water index (NDWI) raster to highlight water.
+// Follow steps below to run script and convert it into a Google Earth Engine App.

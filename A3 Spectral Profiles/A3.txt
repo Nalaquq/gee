@@ -1,0 +1,142 @@
+// A3: Spectral Profiles v1.0
+// Original script by Jonathan S. Lim, University of Oxford/Nalaquq LLC., jlim@nalaquq.com 14/2/2023
+
+// This is a script for producing spectral signature graphs for high resolution aerial imagery. By default, it is configured for the Parrot Sequoia+ multispectral camera.
+// Two graphs are generated: Reflectance as a line chart, and average NDVI values as a bar chart.
+// The data can be exported as a .csv file for further statistical analysis if needed.
+// There are three steps to be followed in this script (Lines 9, 15, 32)
+
+// STEP 1: Upload imagery and specify Google Earth Engine directory . Press run to zoom to image, ignore error message
+// Imports the images and renames the bands for ease of use
+var uav = ee.Image('Insert imagery directory here') 
+  .select(['b1', 'b2', 'b3', 'b4'])
+  .rename(['Green','Red','RE','NIR']);
+
+// STEP 2: Adjust visualizations as needed, Lines ***-***
+// If using Parrot Sequoia, converts band digital number values to show reflectance values, by dividing each band by 32768 as 
+//recommended by https://support.micasense.com/hc/en-us/articles/215460518-What-are-the-units-of-the-Atlas-GeoTIFF-output-
+// Comment out section with (//) if not needed
+uav = uav.divide(32768);
+
+// Set visibility parameters of preview and display image
+var visParams = {
+  bands: ['NIR', 'Green', 'Red'],
+  //min: 0,
+  //max: 3000,
+  gamma: [1.3, 1.3, 1.3]
+};
+
+Map.centerObject(uav, 15);
+Map.addLayer(uav, visParams, 'UAV Image Preview');
+
+//STEP 3: Draw four polygons using the drawing tools ('shape' or 'square') on four areas to produce spectral analysis graphs
+// Press "New layer" before drawing a new feature class. Press run to produce graphs.
+// Edit lines37-40 to add or subtract classes. Press run. Graphs can now be downloaded, along with the spectral values as a .csv file.
+
+var geometry = ee.FeatureCollection([
+    ee.Feature(geometry, {'label': 'Sod house'}),
+    ee.Feature(geometry2, {'label': 'Meadow'}),
+    ee.Feature(geometry3, {'label': 'Trees'}),
+    ee.Feature(geometry4, {'label': 'Water'}),
+  ]);
+
+// Select bands B1 to B4.
+var uavchart = uav.select(['Red','Green','RE','NIR'])
+
+var drawingTools = Map.drawingTools();
+// Only allow drawing points.
+drawingTools.setDrawModes(['polygon', 'rectangle']);
+
+//Produces a reflectance/band line chart
+var bandChart = ui.Chart.image.regions({
+  image: uavchart,
+  regions: geometry,
+  scale: 0.05,
+  seriesProperty: 'label'
+});
+bandChart.setChartType('LineChart');
+bandChart.setOptions({
+  title: 'UAV spectral signatures',
+  hAxis: {
+    title: 'Band'
+  },
+  vAxis: {
+    title: 'Reflectance'
+  },
+  lineWidth: 1,
+  pointSize: 5,
+  series: {
+    0: {color: 'Red'},
+    1: {color: 'Orange'},
+    2: {color: 'Green'},
+    3: {color: 'Blue'}
+  }
+});
+
+print(bandChart);
+
+// Calculates NDVI
+var ndvi= uav.normalizedDifference(['NIR','Red']);
+
+var ndviChart =
+    ui.Chart.image
+        .byRegion({
+          image: ndvi,
+          regions: geometry,
+          reducer: ee.Reducer.mean(),
+          scale: 0.5,
+          xProperty: 'label'
+        })
+        .setSeriesNames([
+          'NDVI'
+        ])
+        .setChartType('ColumnChart')
+        .setOptions({
+          title: 'Average NDVI per feature',
+          hAxis: {
+            title: 'Sample Area',
+            titleTextStyle: {italic: false, bold: true}
+          },
+          vAxis:
+              {title: 'NDVI', titleTextStyle: {italic: false, bold: true}},
+        });
+
+print(ndviChart);
+
+function createPoints(feature) {
+  var bounds = feature.geometry().bounds();
+  var coords = ee.Image.pixelLonLat().clip(bounds);
+
+  // Convert the NDVI image to an integer image
+  var ndviInt = ndvi.multiply(10000).toInt();
+
+  // Use the NDVI integer image for reduceToVectors function
+  var points = ndviInt.addBands(coords).reduceToVectors({
+    geometry: bounds,
+    scale: 1,
+    geometryType: 'centroid',
+    labelProperty: 'label',
+    reducer: ee.Reducer.mean(),
+  });
+
+  var values = ndvi.reduceRegions({
+    collection: points,
+    reducer: ee.Reducer.first(),
+    scale: 1,
+  });
+
+  // Add the originating feature's label to each point
+  values = values.map(function(point) {
+    return ee.Feature(point).set('origin_label', feature.get('label'));
+  });
+
+  return values;
+}
+
+var allPoints = geometry.map(createPoints).flatten();
+
+Export.table.toDrive({
+  collection: allPoints,
+  description: 'NDVI_values',
+  fileFormat: 'CSV',
+});

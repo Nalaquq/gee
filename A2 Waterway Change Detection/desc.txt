@@ -1,0 +1,8 @@
+// A2: Waterway automatic change detection 14/2/2023
+// Original script by Jonathan S. Lim, University of Oxford/Nalaquq LLC., jlim@nalaquq.com 14/2/2023
+
+// This is a script for carrying out relative pixel-based change detection on Planetscope imagery within Google Earth Engine. 
+// It is optimised for highlighting erosion between two uploaded images from different dates, where vegetation is present.
+// It has been tested on imagery from Southwest Alaska during the summer months. It outputs a change detection raster,
+// and offers two ways to isolate values between a certain range on the change raster, either by sampling an area
+// with a polygon drawn in the map window, or by inputting a fixed range of values in line 23-24. There are four steps to be followed below. (Lines 10,15,18,22)

@@ -1,0 +1,6 @@
+// A3: Spectral Profiles v1.0
+// Original script by Jonathan S. Lim, University of Oxford/Nalaquq LLC., jlim@nalaquq.com 14/2/2023
+
+// This is a script for producing spectral signature graphs for high resolution aerial imagery. By default, it is configured for the Parrot Sequoia+ multispectral camera.
+// Two graphs are generated: Reflectance as a line chart, and average NDVI values as a bar chart.
+// The data can be exported as a .csv file for further statistical analysis if needed.

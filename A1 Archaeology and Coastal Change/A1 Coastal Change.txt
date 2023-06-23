@@ -1,0 +1,189 @@
+//Archaeology and Coastal Change (ACC) script
+//Code notes are below
+//Author: Rachel Smith-Leach
+
+
+//Convert geometry from the standard file (study area, Newtok, AK, USA)
+//--------------------------------------------------------------------------------------------------------
+var AOI = 
+    /* color: #98ff00 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-165.26291286399083, 61.03836306279783],
+          [-165.26291286399083, 60.69068313668415],
+          [-164.06540309836583, 60.69068313668415],
+          [-164.06540309836583, 61.03836306279783]]], null, false);
+//Landsat 8
+
+//Load in data collection from specific satellite, i.e. Landsat 8 surface reflectance in this example
+//Add cloud mask, if neccessary for AOI
+function maskL8sr(image) {
+  // Bits 3 and 5 are cloud shadow and cloud.
+  var cloudShadowBitMask = (1 << 3);
+  var cloudsBitMask = (1 << 5);
+  // Get the pixel QA band.
+  var qa = image.select('pixel_qa');
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0)
+                 .and(qa.bitwiseAnd(cloudsBitMask).eq(0));
+  return image.updateMask(mask);
+}
+
+var dataset = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
+                  .map(maskL8sr);
+
+var l8 = dataset;
+
+
+//Filter out the data to create a composite collection
+//var l8DatePlace= l8.filterDate('2015-01-01','2020-12-31').filterBounds(studyarea);
+var l8DatePlace= l8.filterBounds(AOI).filterDate('2015-01-01', '2020-10-01');
+// print ('l8DatePlace', l8DatePlace);
+
+//Down-select Bands
+l8.select('old bands', 'new band names');
+var l8_B3_B6 = l8DatePlace.select(['B3','B4','B5','B6']);
+//print ('l8_B3_B6', l8_B3_B6);
+
+//Rename bands
+var l8Renamed = l8_B3_B6.select(
+    ['B3', 'B4', 'B5', 'B6'], // old names
+    ['green', 'red', 'NIR', 'MIR']); // new names
+print ('l8Renamed', l8Renamed);
+
+//----------------------------------------------------------------------------------------------------------------
+
+//Merging all final satellite collections
+
+var mergedCollection = l8Renamed
+print ('mergedCollection', mergedCollection);
+
+//-------------------------------------------------------------------------------------------------------------------
+
+//Create a threshold to apply to NDWI in order to create rasters which contain ones and zeroes
+
+//NDWI functions for all satellites
+var mergedAllFunction = function(image) {
+  var ndwi = image.normalizedDifference(['green', 'NIR']).rename('NDWI');
+
+// THRESHOLD
+// if NDWI less or equal to 0 => 0 else 1
+var thres = ndwi.gte(0).rename('thres');
+  return image.addBands(thres);
+};
+
+// find all data and filter them by date and add NDWI
+var mergedCollectionNDWI = mergedCollection
+    .filterDate('2015-01-01', '2020-10-01')
+    .filterBounds(AOI)  // filter to area-of-interest; 
+    .map(mergedAllFunction);
+
+// Down select Green, Red, NIR, MIR - only Thres remains
+mergedCollectionNDWI.select('old bands', 'new band names');
+var mergedCollectionNDWI = mergedCollectionNDWI.select(['thres']);
+print ('mergedCollectionNDWI', mergedCollectionNDWI);
+
+//-------------------------------------------------------------------------------------------------------------------
+
+//Create a threshold to apply to MNDWI in order to create rasters which contain ones and zeroes
+
+//MNDWI functions for all satellites
+var mergedAllFunction = function(image) {
+  var mndwi = image.normalizedDifference(['green', 'MIR']).rename('MNDWI');
+
+// THRESHOLD
+// if MNDWI less or equal to 0 => 0 else 1
+var thres = mndwi.gte(0).rename('thres');
+  return image.addBands(thres);
+};
+
+// find all data and filter them by date and add MNDWI
+var mergedCollectionMNDWI = mergedCollection
+    .filterDate('2015-01-01', '2020-10-01')
+    .filterBounds(AOI)  // filter to area-of-interest; 
+    .map(mergedAllFunction);
+
+// Down select Green, Red, NIR, MIR - only Thres remains
+mergedCollectionMNDWI.select('old bands', 'new band names');
+var mergedCollectionMNDWI = mergedCollectionMNDWI.select(['thres']);
+print ('mergedCollectionMNDWI', mergedCollectionMNDWI);
+
+//---------------------------------------------------------------------------------------------------------------
+//merge NDWI, and MNDWI collections
+var mergedIndices = mergedCollectionNDWI.merge(mergedCollectionMNDWI);
+print ('mergedIndices', mergedIndices);
+
+//-------------------------------------------------------------------------------------------------------------------------
+
+//Parse the total collection into years
+
+var collections = {};
+for (var year = 2015; year <= 2020; year++) 
+  collections[year] = mergedIndices.filterDate(year.toString() + '-01-01', year.toString() + '-12-31').filterBounds(AOI);
+print ('collections', collections);
+
+//---------------------------------------------------------------------------------------------------------------------
+
+// Take the mean of all indices values for each raster collection.  This will result in a single raster for each collection
+
+var collectionsMeans = {};
+for (var year = 2015; year <= 2020; year++)
+  collectionsMeans[year] = collections[year].reduce(ee.Reducer.mean());
+  print('collectionsMeans', collectionsMeans);
+
+//--------------------------------------------------------------------------------------------------------------------
+
+// Create a threshold to mitigate visual artifacts due to satellite degradation
+
+var collectionsThres = {};
+for (var year = 2015; year <= 2020; year++)
+collectionsThres[year] = collectionsMeans[year].where(collectionsMeans[year].lt(0.12), 0).where(collectionsMeans[year].gt(0.88), 1);
+  print('collectionsThres', collectionsThres);
+
+// --------------------------------------------------------------------------------------------------------------
+// Calculate the difference between all years
+var calculateCompositeDifference = function() {
+  var compositeDifference = ee.Image(0); // Initialize an empty image
+  
+  // Loop through the years
+  for (var year = 2016; year <= 2020; year++) {
+    var difference = collectionsThres[year].subtract(collectionsThres[year - 1]);
+    compositeDifference = compositeDifference.add(difference);
+  }
+  
+  return compositeDifference;
+};
+
+// Calculate the composite difference
+var compositeDifference = calculateCompositeDifference();
+
+// Export the composite difference as GeoTIFF
+Export.image.toDrive({
+  image: compositeDifference,
+  description: 'CompositeDifference_2016_2023',
+  scale: 30,
+  region: AOI,
+  fileFormat: 'GeoTIFF',
+  formatOptions: {
+    cloudOptimized: true
+  }
+});
+
+//Visualises a preview of the image to be downloaded.
+//Imports custom colour palettes from
+//https://github.com/gee-community/ee-palettes
+
+var palettes = require('users/gena/packages:palettes');
+var changeD_Colour = palettes.colorbrewer.Set2[8];
+Map.addLayer(compositeDifference, {min: -0.5, max: 0.5, palette: changeD_Colour}, 'CompositeDifference_2016_2023');
+
+//This code can be modified to include collections stretching back to the extent of the Landsat series satellites.
+//The current dates were selected as to include years with the greatest number of images and for accuracy across annual comparisons.
+//This code can also be edited to ensure maximum pixels are allowed in the export process if exporting larger areas, however, the code is most compatible with smaller area snippets.
+
+  
